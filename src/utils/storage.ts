@@ -42,7 +42,6 @@ function initDb() {
 }
 
 export const db = initDb();
-
 const ROOMS_COLLECTION = "rooms";
 
 /**

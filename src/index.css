@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+@font-face {
+  font-family: 'OngleipParkDahyeon';
+  src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/2411-3@1.0/Ownglyph_ParkDaHyun.woff2') format('woff2');
+  font-weight: normal;
+  font-display: swap;
+}
+
+@theme {
+  --font-sans: "OngleipParkDahyeon", "Pretendard", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "OngleipParkDahyeon", "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+html, body, #root, *, button, input, select, textarea {
+  font-family: "OngleipParkDahyeon", "Pretendard", "Inter", ui-sans-serif, system-ui, sans-serif !important;
+}

@@ -27,8 +27,21 @@ export interface RoomData {
 
 // Initialize Firebase client-side instance
 const firebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
-const databaseId = firebaseConfig.firestoreDatabaseId || "(default)";
-export const db = getFirestore(firebaseApp, databaseId);
+
+function initDb() {
+  const cfgDbId = (firebaseConfig as any).firestoreDatabaseId;
+  if (cfgDbId && cfgDbId !== "(default)") {
+    try {
+      return getFirestore(firebaseApp, cfgDbId);
+    } catch (e) {
+      console.warn("Could not init named firestore, falling back to default:", e);
+      return getFirestore(firebaseApp);
+    }
+  }
+  return getFirestore(firebaseApp);
+}
+
+export const db = initDb();
 
 const ROOMS_COLLECTION = "rooms";
 

@@ -858,9 +858,14 @@ export default function App() {
 
                     <div className="space-y-3 mb-6">
                       <div>
-                        <label className="block text-xs font-semibold text-[#8C8779] mb-1">내 닉네임</label>
+                        <label htmlFor="create-nickname" className="block text-xs font-semibold text-[#8C8779] mb-1">
+                          내 닉네임
+                        </label>
                         <input
+                          id="create-nickname"
+                          name="create-nickname"
                           type="text"
+                          autoComplete="nickname"
                           placeholder="예: 민수"
                           value={createNickInput}
                           onChange={(e) => setCreateNickInput(e.target.value)}
@@ -868,13 +873,16 @@ export default function App() {
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-[#8C8779] mb-1">
+                        <label htmlFor="create-pin" className="block text-xs font-semibold text-[#8C8779] mb-1">
                           수정용 PIN 번호 (숫자 4자리)
                         </label>
                         <input
+                          id="create-pin"
+                          name="create-pin"
                           type="password"
                           inputMode="numeric"
                           maxLength={4}
+                          autoComplete="new-password"
                           placeholder="비밀번호 설정"
                           value={createPinInput}
                           onChange={(e) => setCreatePinInput(e.target.value.replace(/[^0-9]/g, "").slice(0, 4))}
@@ -907,8 +915,12 @@ export default function App() {
                     <div className="space-y-3 mb-6">
                       <div className="grid grid-cols-3 gap-2">
                         <div className="col-span-1">
-                          <label className="block text-xs font-semibold text-[#8C8779] mb-1">방 코드</label>
+                          <label htmlFor="join-code" className="block text-xs font-semibold text-[#8C8779] mb-1">
+                            방 코드
+                          </label>
                           <input
+                            id="join-code"
+                            name="join-code"
                             type="text"
                             placeholder="7XQK2M"
                             value={joinCodeInput}
@@ -917,9 +929,14 @@ export default function App() {
                           />
                         </div>
                         <div className="col-span-2">
-                          <label className="block text-xs font-semibold text-[#8C8779] mb-1">내 닉네임</label>
+                          <label htmlFor="join-nick" className="block text-xs font-semibold text-[#8C8779] mb-1">
+                            내 닉네임
+                          </label>
                           <input
+                            id="join-nick"
+                            name="join-nick"
                             type="text"
+                            autoComplete="nickname"
                             placeholder="지난번과 같은 이름이면 정보 연동"
                             value={joinNickInput}
                             onChange={(e) => setJoinNickInput(e.target.value)}
@@ -929,13 +946,16 @@ export default function App() {
                       </div>
 
                       <div>
-                        <label className="block text-xs font-semibold text-[#8C8779] mb-1">
+                        <label htmlFor="join-pin" className="block text-xs font-semibold text-[#8C8779] mb-1">
                           PIN 번호 (숫자 4자리)
                         </label>
                         <input
+                          id="join-pin"
+                          name="join-pin"
                           type="password"
                           inputMode="numeric"
                           maxLength={4}
+                          autoComplete="current-password"
                           placeholder="최초 입장 시 앞으로 쓸 PIN 설정"
                           value={joinPinInput}
                           onChange={(e) => setJoinPinInput(e.target.value.replace(/[^0-9]/g, "").slice(0, 4))}
@@ -976,9 +996,14 @@ export default function App() {
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
                     <div>
-                      <label className="block text-xs font-semibold text-[#8C8779] mb-1">사용했던 닉네임</label>
+                      <label htmlFor="find-nick" className="block text-xs font-semibold text-[#8C8779] mb-1">
+                        사용했던 닉네임
+                      </label>
                       <input
+                        id="find-nick"
+                        name="find-nick"
                         type="text"
+                        autoComplete="nickname"
                         placeholder="예: 민수"
                         value={findNickInput}
                         onChange={(e) => setFindNickInput(e.target.value)}
@@ -986,11 +1011,16 @@ export default function App() {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-[#8C8779] mb-1">등록했던 PIN</label>
+                      <label htmlFor="find-pin" className="block text-xs font-semibold text-[#8C8779] mb-1">
+                        등록했던 PIN
+                      </label>
                       <input
+                        id="find-pin"
+                        name="find-pin"
                         type="password"
                         inputMode="numeric"
                         maxLength={4}
+                        autoComplete="current-password"
                         placeholder="숫자 4자리"
                         value={findPinInput}
                         onChange={(e) => setFindPinInput(e.target.value.replace(/[^0-9]/g, "").slice(0, 4))}

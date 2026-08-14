@@ -1,0 +1,32 @@
+{
+  "entities": {
+    "Room": {
+      "collection": "rooms",
+      "fields": {
+        "code": {
+          "type": "string",
+          "required": true
+        },
+        "dates": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "required": true
+        },
+        "createdAt": {
+          "type": "number",
+          "required": true
+        },
+        "createdBy": {
+          "type": "string",
+          "required": true
+        },
+        "users": {
+          "type": "map",
+          "required": true
+        }
+      }
+    }
+  }
+}

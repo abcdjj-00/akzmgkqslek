@@ -30,6 +30,15 @@ import {
   OverlapSegment,
   DayOverlapData
 } from "./types";
+import {
+  createRoom,
+  joinRoom,
+  saveUserRangesInDb,
+  updateRoomDatesInDb,
+  getRoomResponses,
+  findRoomsByUserInDb,
+  getRoomById
+} from "./utils/storage";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const WEEKDAY = ["일", "월", "화", "수", "목", "금", "토"];
@@ -307,32 +316,27 @@ export default function App() {
     setLoading(true);
     try {
       const pinHash = await hashPin(rawPin);
-      const dates = Array.from(setupSelectedDates).sort();
+      const dates = Array.from<string>(setupSelectedDates).sort();
 
-      const res = await fetch("/api/rooms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nickname: nick, pinHash, dates }),
+      const created = await createRoom({
+        nickname: nick,
+        pinHash,
+        dates,
       });
 
-      const data = await res.json();
-      if (data.success) {
-        setRoomCode(data.code);
-        setNickname(nick);
-        setPin(rawPin);
-        setConfig(data.config);
-        setMyRanges({});
-        setMyActiveDates(new Set());
-        addRoomToLocalHistory(data.code, data.config);
-        window.location.hash = data.code;
-        setScreen("grid");
-        setMode("edit");
-        showToast("🎮 조율용 방이 완성되었습니다! 친구들에게 코드를 전송하세요.");
-      } else {
-        showToast(data.error || "방 생성 도중 오류가 발생했습니다.");
-      }
-    } catch (err) {
-      showToast("서버와 연결할 수 없습니다.");
+      setRoomCode(created.code);
+      setNickname(nick);
+      setPin(rawPin);
+      setConfig(created.config);
+      setMyRanges({});
+      setMyActiveDates(new Set());
+      addRoomToLocalHistory(created.code, created.config);
+      window.location.hash = created.code;
+      setScreen("grid");
+      setMode("edit");
+      showToast("🎮 조율용 방이 완성되었습니다! 친구들에게 코드를 전송하세요.");
+    } catch (err: any) {
+      showToast(err?.message || "방 생성 도중 오류가 발생했습니다.");
     } finally {
       setLoading(false);
     }
@@ -359,34 +363,25 @@ export default function App() {
     setLoading(true);
     try {
       const pinHash = await hashPin(rawPin);
-      const res = await fetch(`/api/rooms/${code}/join`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nickname: nick, pinHash }),
-      });
+      const result = await joinRoom(code, nick, pinHash);
 
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setRoomCode(code);
-        setNickname(nick);
-        setPin(rawPin);
-        setConfig(data.config);
-        const fetchedRanges = data.myRanges || {};
-        setMyRanges(fetchedRanges);
-        const activeDates = new Set<string>(
-          Object.keys(fetchedRanges).filter((d) => (fetchedRanges[d] || []).length > 0)
-        );
-        setMyActiveDates(activeDates);
-        addRoomToLocalHistory(code, data.config);
-        window.location.hash = code;
-        setScreen("grid");
-        setMode("edit");
-        showToast(`${nick}님, 방에 입장하셨습니다!`);
-      } else {
-        showToast(data.error || "PIN이 일치하지 않거나 참여할 수 없습니다.");
-      }
-    } catch (err) {
-      showToast("서버와의 연결 상태를 확인해 주세요.");
+      setRoomCode(code);
+      setNickname(nick);
+      setPin(rawPin);
+      setConfig(result.config);
+      const fetchedRanges = result.myRanges || {};
+      setMyRanges(fetchedRanges);
+      const activeDates = new Set<string>(
+        Object.keys(fetchedRanges).filter((d) => (fetchedRanges[d] || []).length > 0)
+      );
+      setMyActiveDates(activeDates);
+      addRoomToLocalHistory(code, result.config);
+      window.location.hash = code;
+      setScreen("grid");
+      setMode("edit");
+      showToast(`${nick}님, 방에 입장하셨습니다!`);
+    } catch (err: any) {
+      showToast(err?.message || "PIN이 일치하지 않거나 참여할 수 없습니다.");
     } finally {
       setLoading(false);
     }
@@ -408,25 +403,16 @@ export default function App() {
     setFindLoading(true);
     try {
       const pinHash = await hashPin(rawPin);
-      const res = await fetch("/api/find-rooms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nickname: nick, pinHash }),
-      });
+      const rooms = await findRoomsByUserInDb(nick, pinHash);
 
-      const data = await res.json();
-      if (data.success) {
-        setFoundRooms(data.rooms);
-        if (data.rooms.length === 0) {
-          showToast("입력한 계정 정보로 조회된 모임이 없습니다.");
-        } else {
-          showToast(`총 ${data.rooms.length}개의 참여 모임을 찾았습니다!`);
-        }
+      setFoundRooms(rooms);
+      if (rooms.length === 0) {
+        showToast("입력한 계정 정보로 조회된 모임이 없습니다.");
       } else {
-        showToast(data.error || "모임을 찾는 중 오류가 생겼습니다.");
+        showToast(`총 ${rooms.length}개의 참여 모임을 찾았습니다!`);
       }
-    } catch (err) {
-      showToast("네트워크 상태를 확인해 주세요.");
+    } catch (err: any) {
+      showToast(err?.message || "모임을 찾는 중 오류가 생겼습니다.");
     } finally {
       setFindLoading(false);
     }
@@ -446,34 +432,25 @@ export default function App() {
     setLoading(true);
     try {
       const pinHash = await hashPin(rawPin);
-      const res = await fetch(`/api/rooms/${item.code}/join`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nickname: nick, pinHash }),
-      });
+      const result = await joinRoom(item.code, nick, pinHash);
 
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setRoomCode(item.code);
-        setNickname(nick);
-        setPin(rawPin);
-        setConfig(data.config);
-        const fetchedRanges = data.myRanges || {};
-        setMyRanges(fetchedRanges);
-        const activeDates = new Set<string>(
-          Object.keys(fetchedRanges).filter((d) => (fetchedRanges[d] || []).length > 0)
-        );
-        setMyActiveDates(activeDates);
-        addRoomToLocalHistory(item.code, data.config);
-        window.location.hash = item.code;
-        setScreen("grid");
-        setMode("edit");
-        showToast("저장된 일정을 성공적으로 연동했습니다.");
-      } else {
-        showToast(data.error || "계정 정보가 올바르지 않습니다.");
-      }
-    } catch (err) {
-      showToast("연결할 수 없습니다.");
+      setRoomCode(item.code);
+      setNickname(nick);
+      setPin(rawPin);
+      setConfig(result.config);
+      const fetchedRanges = result.myRanges || {};
+      setMyRanges(fetchedRanges);
+      const activeDates = new Set<string>(
+        Object.keys(fetchedRanges).filter((d) => (fetchedRanges[d] || []).length > 0)
+      );
+      setMyActiveDates(activeDates);
+      addRoomToLocalHistory(item.code, result.config);
+      window.location.hash = item.code;
+      setScreen("grid");
+      setMode("edit");
+      showToast("저장된 일정을 성공적으로 연동했습니다.");
+    } catch (err: any) {
+      showToast(err?.message || "계정 정보가 올바르지 않습니다.");
     } finally {
       setLoading(false);
     }
@@ -484,17 +461,9 @@ export default function App() {
     setSaving(true);
     try {
       const pinHash = await hashPin(pin);
-      const res = await fetch(`/api/rooms/${roomCode}/user/${nickname}/ranges`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pinHash, ranges: updatedRanges }),
-      });
-
-      if (!res.ok) {
-        showToast("일정 실시간 저장에 실패했습니다.");
-      }
-    } catch (e) {
-      showToast("일정 저장 중 통신 에러가 발생했습니다.");
+      await saveUserRangesInDb(roomCode, nickname, pinHash, updatedRanges);
+    } catch (e: any) {
+      showToast(e?.message || "일정 저장 중 오류가 발생했습니다.");
     } finally {
       setSaving(false);
     }
@@ -529,31 +498,23 @@ export default function App() {
     setSaving(true);
     try {
       const pinHash = await hashPin(pin);
-      const res = await fetch(`/api/rooms/${roomCode}/dates`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          nickname,
-          pinHash,
-          dates: Array.from(editingDatesSet)
-        })
-      });
+      const newConfig = await updateRoomDatesInDb(
+        roomCode,
+        nickname,
+        pinHash,
+        Array.from(editingDatesSet)
+      );
 
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setConfig(data.config);
-        setIsEditingDates(false);
-        showToast("모임의 조율 날짜가 변경되었습니다!");
-        if (roomCode && data.config) {
-          addRoomToLocalHistory(roomCode, data.config);
-        }
-        // Refresh responses
-        fetchHeatmapData();
-      } else {
-        showToast(data.error || "날짜 변경에 실패했습니다.");
+      setConfig(newConfig);
+      setIsEditingDates(false);
+      showToast("모임의 조율 날짜가 변경되었습니다!");
+      if (roomCode && newConfig) {
+        addRoomToLocalHistory(roomCode, newConfig);
       }
-    } catch (e) {
-      showToast("서버와 통신하는 도중 오류가 발생했습니다.");
+      // Refresh responses
+      fetchHeatmapData();
+    } catch (e: any) {
+      showToast(e?.message || "날짜 변경에 실패했습니다.");
     } finally {
       setSaving(false);
     }
@@ -697,19 +658,15 @@ export default function App() {
 
   // Refresh heatmap/responses
   const fetchHeatmapData = async () => {
+    if (!roomCode) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/rooms/${roomCode}/responses`);
-      const data = await res.json();
-      if (data.success) {
-        setResponses(data.responses || {});
-        setConfig(data.config);
-        setLastRefresh(new Date());
-      } else {
-        showToast(data.error || "종합 일정을 가져올 수 없습니다.");
-      }
-    } catch (e) {
-      showToast("데이터 갱신에 실패했습니다.");
+      const data = await getRoomResponses(roomCode);
+      setResponses(data.responses || {});
+      setConfig(data.config);
+      setLastRefresh(new Date());
+    } catch (e: any) {
+      showToast(e?.message || "데이터 갱신에 실패했습니다.");
     } finally {
       setLoading(false);
     }

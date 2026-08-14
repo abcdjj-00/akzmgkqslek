@@ -334,7 +334,6 @@ export default function App() {
       window.location.hash = created.code;
       setScreen("grid");
       setMode("edit");
-      showToast("🎮 조율용 방이 완성되었습니다! 친구들에게 코드를 전송하세요.");
     } catch (err: any) {
       showToast(err?.message || "방 생성 도중 오류가 발생했습니다.");
     } finally {

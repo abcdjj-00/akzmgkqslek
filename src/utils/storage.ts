@@ -4,28 +4,25 @@ import {
   doc,
   getDoc,
   setDoc,
-  updateDoc,
   collection,
   query,
   getDocs,
   onSnapshot,
 } from "firebase/firestore";
 import firebaseConfig from "../../firebase-applet-config.json";
+import { TimeRange, RoomConfig } from "../types";
 
-export interface Participant {
-  id: string;
-  name: string;
-  pin: string;
-  availableTimes: string[];
-  lastUpdated: string;
+export interface UserData {
+  pinHash: string;
+  ranges: Record<string, TimeRange[]>;
 }
 
-export interface Room {
+export interface RoomData {
   code: string;
-  title: string;
-  date: string;
-  createdAt: string;
-  participants: Participant[];
+  dates: string[];
+  createdAt: number;
+  createdBy: string;
+  users: Record<string, UserData>;
 }
 
 // Initialize Firebase client-side instance
@@ -58,48 +55,265 @@ export function generateRoomCode(): string {
   return code;
 }
 
-// Firebase 기반 방 생성 함수
-export async function createRoomInFirestore(title: string, date: string, creatorName: string, creatorPin: string): Promise<Room> {
-  const code = generateRoomCode();
-  const newRoom: Room = {
+/**
+ * Retrieve room data by room code.
+ */
+export async function getRoomById(code: string): Promise<RoomData | null> {
+  const upperCode = code.trim().toUpperCase();
+  if (!upperCode) return null;
+
+  try {
+    const roomRef = doc(db, ROOMS_COLLECTION, upperCode);
+    const snap = await getDoc(roomRef);
+    if (snap.exists()) {
+      return snap.data() as RoomData;
+    }
+  } catch (err) {
+    console.error(`Error fetching room ${upperCode}:`, err);
+    throw err;
+  }
+  return null;
+}
+
+/**
+ * Create a new room with custom dates and creator info.
+ */
+export async function createRoom(params: {
+  nickname: string;
+  pinHash: string;
+  dates: string[];
+}): Promise<{ code: string; config: RoomConfig }> {
+  const { nickname, pinHash, dates } = params;
+  if (!nickname || !pinHash || !dates || dates.length === 0) {
+    throw new Error("닉네임, PIN, 그리고 최소 1개 이상의 날짜가 필요합니다.");
+  }
+
+  let code = "";
+  let attempts = 0;
+  while (attempts < 10) {
+    code = generateRoomCode();
+    const existing = await getRoomById(code);
+    if (!existing) break;
+    attempts++;
+  }
+
+  const sortedDates = [...dates].sort();
+  const newRoom: RoomData = {
     code,
-    title: title || "게임 약속",
-    date: date || new Date().toISOString().split("T")[0],
-    createdAt: new Date().toISOString(),
-    participants: [
-      {
-        id: "p_" + Date.now(),
-        name: creatorName,
-        pin: creatorPin,
-        availableTimes: [],
-        lastUpdated: new Date().toISOString(),
+    dates: sortedDates,
+    createdAt: Date.now(),
+    createdBy: nickname,
+    users: {
+      [nickname]: {
+        pinHash,
+        ranges: {},
       },
-    ],
+    },
   };
 
   const roomRef = doc(db, ROOMS_COLLECTION, code);
   await setDoc(roomRef, newRoom);
-  return newRoom;
+
+  return {
+    code,
+    config: {
+      dates: newRoom.dates,
+      createdBy: newRoom.createdBy,
+      createdAt: newRoom.createdAt,
+    },
+  };
 }
 
-// 방 데이터 가져오기
-export async function getRoomFromFirestore(roomCode: string): Promise<Room | null> {
-  const roomRef = doc(db, ROOMS_COLLECTION, roomCode.toUpperCase());
-  const snap = await getDoc(roomRef);
-  if (!snap.exists()) {
-    return null;
+/**
+ * Join an existing room with nickname and PIN hash validation.
+ */
+export async function joinRoom(
+  code: string,
+  nickname: string,
+  pinHash: string
+): Promise<{
+  success: boolean;
+  nickname: string;
+  myRanges: Record<string, TimeRange[]>;
+  config: RoomConfig;
+}> {
+  const upperCode = code.trim().toUpperCase();
+  const room = await getRoomById(upperCode);
+
+  if (!room) {
+    throw new Error("존재하지 않는 방입니다. 코드를 다시 확인해 주세요.");
   }
-  return snap.data() as Room;
+
+  const existingUser = room.users?.[nickname];
+  if (existingUser) {
+    if (existingUser.pinHash !== pinHash) {
+      throw new Error("PIN 번호가 일치하지 않습니다. 올바른 PIN을 입력해 주세요.");
+    }
+  } else {
+    const newUser: UserData = {
+      pinHash,
+      ranges: {},
+    };
+    const roomRef = doc(db, ROOMS_COLLECTION, upperCode);
+    await setDoc(roomRef, { users: { [nickname]: newUser } }, { merge: true });
+  }
+
+  return {
+    success: true,
+    nickname,
+    myRanges: existingUser?.ranges || {},
+    config: {
+      dates: room.dates,
+      createdBy: room.createdBy,
+      createdAt: room.createdAt,
+    },
+  };
 }
 
-// 실시간 방 구독 리스너
-export function subscribeToRoom(roomCode: string, onUpdate: (room: Room | null) => void) {
-  const roomRef = doc(db, ROOMS_COLLECTION, roomCode.toUpperCase());
+/**
+ * Save user time ranges for a room.
+ */
+export async function saveUserRangesInDb(
+  code: string,
+  nickname: string,
+  pinHash: string,
+  ranges: Record<string, TimeRange[]>
+): Promise<{ success: boolean; config: RoomConfig }> {
+  const upperCode = code.trim().toUpperCase();
+  const room = await getRoomById(upperCode);
+
+  if (!room) {
+    throw new Error("존재하지 않는 방입니다.");
+  }
+
+  const user = room.users?.[nickname];
+  if (!user || user.pinHash !== pinHash) {
+    throw new Error("수정 권한이 없습니다. PIN 번호를 확인해 주세요.");
+  }
+
+  const roomRef = doc(db, ROOMS_COLLECTION, upperCode);
+  await setDoc(
+    roomRef,
+    {
+      users: {
+        [nickname]: {
+          pinHash,
+          ranges,
+        },
+      },
+    },
+    { merge: true }
+  );
+
+  return {
+    success: true,
+    config: {
+      dates: room.dates,
+      createdBy: room.createdBy,
+      createdAt: room.createdAt,
+    },
+  };
+}
+
+/**
+ * Update candidate dates for a room.
+ */
+export async function updateRoomDatesInDb(
+  code: string,
+  nickname: string,
+  pinHash: string,
+  dates: string[]
+): Promise<{ success: boolean; config: RoomConfig }> {
+  const upperCode = code.trim().toUpperCase();
+  const room = await getRoomById(upperCode);
+
+  if (!room) {
+    throw new Error("존재하지 않는 방입니다.");
+  }
+
+  const user = room.users?.[nickname];
+  if (!user || user.pinHash !== pinHash) {
+    throw new Error("수정 권한이 없습니다. PIN 번호를 확인해 주세요.");
+  }
+
+  const sortedDates = [...dates].sort();
+  const roomRef = doc(db, ROOMS_COLLECTION, upperCode);
+  await setDoc(roomRef, { dates: sortedDates }, { merge: true });
+
+  return {
+    success: true,
+    config: {
+      dates: sortedDates,
+      createdBy: room.createdBy,
+      createdAt: room.createdAt,
+    },
+  };
+}
+
+/**
+ * Fetch all participants' responses for a room.
+ */
+export async function getRoomResponses(
+  code: string
+): Promise<Record<string, Record<string, TimeRange[]>>> {
+  const upperCode = code.trim().toUpperCase();
+  const room = await getRoomById(upperCode);
+
+  if (!room || !room.users) {
+    return {};
+  }
+
+  const responses: Record<string, Record<string, TimeRange[]>> = {};
+  for (const [user, data] of Object.entries(room.users)) {
+    responses[user] = data.ranges || {};
+  }
+
+  return responses;
+}
+
+/**
+ * Find rooms by user nickname and PIN hash.
+ */
+export async function findRoomsByUserInDb(
+  nickname: string,
+  pinHash: string
+): Promise<Array<{ code: string; config: RoomConfig }>> {
+  const roomsRef = collection(db, ROOMS_COLLECTION);
+  const q = query(roomsRef);
+  const snap = await getDocs(q);
+
+  const matched: Array<{ code: string; config: RoomConfig }> = [];
+  snap.forEach((docSnap) => {
+    const r = docSnap.data() as RoomData;
+    if (r.users && r.users[nickname] && r.users[nickname].pinHash === pinHash) {
+      matched.push({
+        code: r.code,
+        config: {
+          dates: r.dates,
+          createdBy: r.createdBy,
+          createdAt: r.createdAt,
+        },
+      });
+    }
+  });
+
+  return matched;
+}
+
+/**
+ * Real-time listener for room updates.
+ */
+export function subscribeToRoomUpdates(
+  code: string,
+  onUpdate: (room: RoomData | null) => void
+) {
+  const upperCode = code.trim().toUpperCase();
+  const roomRef = doc(db, ROOMS_COLLECTION, upperCode);
   return onSnapshot(
     roomRef,
     (snap) => {
       if (snap.exists()) {
-        onUpdate(snap.data() as Room);
+        onUpdate(snap.data() as RoomData);
       } else {
         onUpdate(null);
       }
@@ -108,62 +322,4 @@ export function subscribeToRoom(roomCode: string, onUpdate: (room: Room | null) 
       console.error("Firestore listen error:", err);
     }
   );
-}
-
-// 참여자 추가 또는 기존 참여자 정보 업데이트
-export async function joinOrUpdateParticipant(
-  roomCode: string,
-  participantName: string,
-  pin: string,
-  times?: string[]
-): Promise<{ success: boolean; message?: string; room?: Room }> {
-  const roomRef = doc(db, ROOMS_COLLECTION, roomCode.toUpperCase());
-  const snap = await getDoc(roomRef);
-  if (!snap.exists()) {
-    return { success: false, message: "존재하지 않는 방입니다." };
-  }
-
-  const room = snap.data() as Room;
-  const existingIdx = room.participants.findIndex((p) => p.name === participantName);
-
-  if (existingIdx >= 0) {
-    // 기존 유저: PIN 일치 확인
-    if (room.participants[existingIdx].pin !== pin) {
-      return { success: false, message: "PIN 번호가 일치하지 않습니다." };
-    }
-    if (times !== undefined) {
-      room.participants[existingIdx].availableTimes = times;
-      room.participants[existingIdx].lastUpdated = new Date().toISOString();
-    }
-  } else {
-    // 신규 참여자 등록
-    room.participants.push({
-      id: "p_" + Date.now(),
-      name: participantName,
-      pin,
-      availableTimes: times || [],
-      lastUpdated: new Date().toISOString(),
-    });
-  }
-
-  await updateDoc(roomRef, { participants: room.participants });
-  return { success: true, room };
-}
-
-// 닉네임과 PIN으로 참여했던 방 목록 찾기
-export async function findMyRoomsInFirestore(nickname: string, pin: string): Promise<Room[]> {
-  const roomsRef = collection(db, ROOMS_COLLECTION);
-  const q = query(roomsRef);
-  const snap = await getDocs(q);
-
-  const matched: Room[] = [];
-  snap.forEach((docSnap) => {
-    const r = docSnap.data() as Room;
-    const isMember = r.participants.some((p) => p.name === nickname && p.pin === pin);
-    if (isMember) {
-      matched.push(r);
-    }
-  });
-
-  return matched;
 }
